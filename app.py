@@ -4,16 +4,21 @@ from spotipy import Spotify
 from spotipy.oauth2 import SpotifyOAuth
 from google import genai
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
+
+app.config["SESSION_COOKIE_SECURE"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "None"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 sp_oauth = SpotifyOAuth(
     client_id=os.getenv("SPOTIPY_CLIENT_ID"),
     client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
-    redirect_uri=os.getenv("SPOTIPY_REDIRECT_URI").strip(),
-    scope="user-top-read playlist-read-private playlist-modify-public playlist-modify-private"
+    redirect_uri=os.getenv("SPOTIPY_REDIRECT_URI"),
+    scope="user-top-read playlist-read-private playlist-modify-public playlist-modify-private",
+    cache_path=None
 )
 
 @app.route("/")
@@ -28,11 +33,15 @@ def login():
 def callback():
     code = request.args.get("code")
     if not code:
-        return "No code returned from Spotify.", 400
+        return "Spotify did not return a code.", 400
 
-    token_info = sp_oauth.get_access_token(code, as_dict=True)
+    try:
+        token_info = sp_oauth.get_access_token(code, as_dict=True)
+    except Exception as e:
+        return f"Token exchange failed: {str(e)}", 400
+
     if not token_info or "access_token" not in token_info:
-        return "Could not authenticate with Spotify.", 400
+        return "Failed to authenticate with Spotify.", 400
 
     session["token_info"] = token_info
     return redirect("/dashboard")
@@ -45,11 +54,10 @@ def dashboard():
 
     sp = Spotify(auth=token_info["access_token"])
 
-    top_tracks = sp.current_user_top_tracks(limit=50)["items"]
-    top_artists = sp.current_user_top_artists(limit=30)["items"]
+    top_tracks = sp.current_user_top_tracks(limit=50, time_range="medium_term")["items"]
+    top_artists = sp.current_user_top_artists(limit=30, time_range="medium_term")["items"]
 
     genres = [g for artist in top_artists for g in artist.get("genres", [])]
-
     track_names = [f"{t['name']} - {t['artists'][0]['name']}" for t in top_tracks[:20]]
     artist_names = [a["name"] for a in top_artists[:20]]
     unique_genres = list(set(genres))
@@ -74,34 +82,29 @@ def dashboard():
 def roast():
     data = session.get("dashboard_data")
     if not data:
-        return {"error": "No Spotify data"}, 400
+        return {"error": "No data from Spotify"}, 400
 
     prompt = f"""
-You are Spotiscan — a culturally fluent, emotionally-aware musical psychologist
-with razor-sharp observational humor and deep understanding of music subcultures.
+You are Spotiscan — an emotionally-aware, culturally intelligent musical psychologist
+with sharp observational humor.
 
-Analyze the user's music identity using ONLY the provided data.
+Your mission:
+Give the user a personality roast based ENTIRELY on their music taste.
 
-### 🔥 Roast (2–4 lines)
-Make it painfully accurate, funny, and specific to their artists, genres, and patterns.
+### 🔥 Roast
+Funny, accurate, not generic.
 
 ### 🎧 Music Taste Score (0–10)
-Give a brutally honest score with one short explanation.
+One short justification.
 
 ### 🧠 Psychological Breakdown
 Interpret:
-- Repeat rate = {data['repeat_rate']}
-- Genre diversity = {data['genre_diversity']}
-- Dominant genre = {data['dominant_genre']}
-
-Explain their emotional patterns, coping style, attachment vibes, and main-character energy.
+Repeat rate = {data['repeat_rate']}
+Genre diversity = {data['genre_diversity']}
+Dominant genre = {data['dominant_genre']}
 
 ### 🎵 5 Niche Recommendations
-Rules:
-- REAL songs only
-- Format: Song – Artist
-- No TikTok overplayed garbage unless it fits the vibe
-- Prioritize underground, cinematic, indie, alternative, or cult-classic tracks
+Song – Artist only, real songs, no TikTok-pop, match the vibe.
 
 Tracks: {data['tracks']}
 Artists: {data['artists']}
@@ -129,22 +132,20 @@ def generate_playlist():
         return {"error": "Prompt missing"}, 400
 
     ai_prompt = f"""
-You are a world-class playlist curator with deep taste and zero tolerance for mid songs.
+You are a world-class playlist curator who ONLY returns real, high-quality songs.
 
-Generate **40 real, high-quality, vibe-accurate songs** for the theme: "{user_prompt}".
+Generate 40 songs for the playlist theme: "{user_prompt}"
 
-Your job:
-- Understand the emotional tone, mood, tempo, and sub-genre
-- Choose songs that FEEL like the vibe
-- Avoid generic radio + TikTok unless perfect for the prompt
-- Prefer cinematic, niche, cult-classic, global, indie, electronic, alternative, or aesthetic tracks
+STRICT RULES:
+All songs must exist.
+Artists must be correct.
+Songs must deeply match the vibe and emotional tone.
+Avoid TikTok-pop unless the vibe demands it.
+Prefer niche, cinematic, underground, cult classics.
 
-FORMAT (STRICT):
+FORMAT:
 Song Title - Artist
-One per line
-No numbers
-No quotes
-No extra text
+One per line, no numbering, no commentary.
 """
 
     res = client.models.generate_content(
@@ -158,9 +159,9 @@ No extra text
     track_ids = []
     for s in songs:
         try:
-            r = sp.search(q=s, type="track", limit=1)
-            if r["tracks"]["items"]:
-                track_ids.append(r["tracks"]["items"][0]["id"])
+            result = sp.search(q=s, type="track", limit=1)
+            if result["tracks"]["items"]:
+                track_ids.append(result["tracks"]["items"][0]["id"])
         except:
             pass
 
@@ -168,11 +169,12 @@ No extra text
         return {"error": "No valid songs found"}, 400
 
     user_id = sp.current_user()["id"]
+
     playlist = sp.user_playlist_create(
         user_id,
         name=f"Spotiscan: {user_prompt}",
         public=True,
-        description=f"AI-generated playlist for vibe: {user_prompt}"
+        description=f"AI playlist for vibe: {user_prompt}"
     )
 
     sp.user_playlist_add_tracks(user_id, playlist["id"], track_ids[:40])
