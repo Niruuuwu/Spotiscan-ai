@@ -5,18 +5,18 @@ from spotipy.oauth2 import SpotifyOAuth
 from google import genai
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY")
+app.secret_key = os.getenv("SECRET_KEY").strip()
 
 app.config["SESSION_COOKIE_SECURE"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "None"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY").strip())
 
 sp_oauth = SpotifyOAuth(
-    client_id=os.getenv("SPOTIPY_CLIENT_ID"),
-    client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
-    redirect_uri=os.getenv("SPOTIPY_REDIRECT_URI"),
+    client_id=os.getenv("SPOTIPHY_CLIENT_ID", os.getenv("SPOTIPY_CLIENT_ID")).strip(),
+    client_secret=os.getenv("SPOTIPHY_CLIENT_SECRET", os.getenv("SPOTIPY_CLIENT_SECRET")).strip(),
+    redirect_uri=os.getenv("SPOTIPY_REDIRECT_URI").strip(),
     scope="user-top-read playlist-read-private playlist-modify-public playlist-modify-private",
     cache_path=None
 )
