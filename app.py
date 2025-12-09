@@ -1,59 +1,41 @@
 import os
-import pathlib
 from flask import Flask, redirect, session, request, render_template
 from spotipy import Spotify
 from spotipy.oauth2 import SpotifyOAuth
-from dotenv import load_dotenv
 from google import genai
 
-
-import os
-
-
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-
-print([m.name for m in client.models.list()])
-
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
 
-
 sp_oauth = SpotifyOAuth(
     client_id=os.getenv("SPOTIPY_CLIENT_ID"),
     client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
-    redirect_uri=os.getenv("SPOTIPY_REDIRECT_URI"),
+    redirect_uri=os.getenv("SPOTIPY_REDIRECT_URI").strip(),
     scope="user-top-read playlist-read-private playlist-modify-public playlist-modify-private"
 )
-
 
 @app.route("/")
 def home():
     return render_template("home.html")
 
-
 @app.route("/login")
 def login():
-    auth_url = sp_oauth.get_authorize_url()
-    return redirect(auth_url)
-
+    return redirect(sp_oauth.get_authorize_url())
 
 @app.route("/callback")
 def callback():
     code = request.args.get("code")
-
     if not code:
-        return "Spotify did not return a code.", 400
+        return "No code returned from Spotify.", 400
 
-    # Correct modern token exchange
     token_info = sp_oauth.get_access_token(code, as_dict=True)
-
     if not token_info or "access_token" not in token_info:
-        return "Failed to authenticate with Spotify.", 400
+        return "Could not authenticate with Spotify.", 400
 
     session["token_info"] = token_info
     return redirect("/dashboard")
-
 
 @app.route("/dashboard")
 def dashboard():
@@ -63,9 +45,8 @@ def dashboard():
 
     sp = Spotify(auth=token_info["access_token"])
 
-    # Fetch Spotify data
-    top_tracks = sp.current_user_top_tracks(limit=50, time_range="medium_term")["items"]
-    top_artists = sp.current_user_top_artists(limit=30, time_range="medium_term")["items"]
+    top_tracks = sp.current_user_top_tracks(limit=50)["items"]
+    top_artists = sp.current_user_top_artists(limit=30)["items"]
 
     genres = [g for artist in top_artists for g in artist.get("genres", [])]
 
@@ -89,25 +70,23 @@ def dashboard():
     session["dashboard_data"] = summary
     return render_template("dashboard.html", summary=summary)
 
-
 @app.route("/roast", methods=["POST"])
 def roast():
     data = session.get("dashboard_data")
     if not data:
-        return {"error": "No data from Spotify"}, 400
+        return {"error": "No Spotify data"}, 400
 
     prompt = f"""
-You are Spotiscan — an emotionally-aware, culturally intelligent musical psychologist
-with sharp observational humor.
+You are Spotiscan — a culturally fluent, emotionally-aware musical psychologist
+with razor-sharp observational humor and deep understanding of music subcultures.
 
-Your mission:
-Give the user a personality roast based ENTIRELY on their music taste.
+Analyze the user's music identity using ONLY the provided data.
 
-### 🔥 Roast (funny, accurate, not generic)
-Make it specific to their artists, genres, and patterns.
+### 🔥 Roast (2–4 lines)
+Make it painfully accurate, funny, and specific to their artists, genres, and patterns.
 
 ### 🎧 Music Taste Score (0–10)
-One short justification.
+Give a brutally honest score with one short explanation.
 
 ### 🧠 Psychological Breakdown
 Interpret:
@@ -115,12 +94,14 @@ Interpret:
 - Genre diversity = {data['genre_diversity']}
 - Dominant genre = {data['dominant_genre']}
 
+Explain their emotional patterns, coping style, attachment vibes, and main-character energy.
+
 ### 🎵 5 Niche Recommendations
 Rules:
-- Song – Artist format
-- Only REAL songs
-- No TikTok generic stuff
-- Match the emotional energy, not popularity
+- REAL songs only
+- Format: Song – Artist
+- No TikTok overplayed garbage unless it fits the vibe
+- Prioritize underground, cinematic, indie, alternative, or cult-classic tracks
 
 Tracks: {data['tracks']}
 Artists: {data['artists']}
@@ -134,8 +115,6 @@ Genres: {data['genres']}
 
     return {"roast": res.text}
 
-
-
 @app.route("/generate_playlist", methods=["POST"])
 def generate_playlist():
     token_info = session.get("token_info")
@@ -143,7 +122,6 @@ def generate_playlist():
         return {"error": "User not logged in"}, 401
 
     sp = Spotify(auth=token_info["access_token"])
-
     data = request.get_json()
     user_prompt = data.get("prompt")
 
@@ -151,20 +129,22 @@ def generate_playlist():
         return {"error": "Prompt missing"}, 400
 
     ai_prompt = f"""
-You are a world-class playlist curator who ONLY returns real, high-quality songs.
+You are a world-class playlist curator with deep taste and zero tolerance for mid songs.
 
-Generate **40 songs** for the playlist theme: "{user_prompt}"
+Generate **40 real, high-quality, vibe-accurate songs** for the theme: "{user_prompt}".
 
-STRICT RULES:
-- All songs MUST exist
-- Artists MUST be correct
-- Song choices MUST deeply match the vibe, mood, sub-genre, emotional tone, tempo
-- NO TikTok-pop, NO generic radio songs unless the vibe explicitly requires it
-- Prefer niche, aesthetic, cinematic, cult-classic, underrated gems
+Your job:
+- Understand the emotional tone, mood, tempo, and sub-genre
+- Choose songs that FEEL like the vibe
+- Avoid generic radio + TikTok unless perfect for the prompt
+- Prefer cinematic, niche, cult-classic, global, indie, electronic, alternative, or aesthetic tracks
 
-FORMAT:
+FORMAT (STRICT):
 Song Title - Artist
-(One per line, no numbering, no commentary)
+One per line
+No numbers
+No quotes
+No extra text
 """
 
     res = client.models.generate_content(
@@ -188,12 +168,11 @@ Song Title - Artist
         return {"error": "No valid songs found"}, 400
 
     user_id = sp.current_user()["id"]
-
     playlist = sp.user_playlist_create(
         user_id,
         name=f"Spotiscan: {user_prompt}",
         public=True,
-        description=f"AI playlist for vibe: {user_prompt}"
+        description=f"AI-generated playlist for vibe: {user_prompt}"
     )
 
     sp.user_playlist_add_tracks(user_id, playlist["id"], track_ids[:40])
@@ -203,11 +182,5 @@ Song Title - Artist
         "tracks_added": len(track_ids[:40])
     }
 
-
-
 if __name__ == "__main__":
     app.run()
-    app.config["SESSION_COOKIE_SECURE"] = True
-    app.config["SESSION_COOKIE_SAMESITE"] = "None"
-
- 
