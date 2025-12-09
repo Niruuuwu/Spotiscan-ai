@@ -7,15 +7,7 @@ from dotenv import load_dotenv
 from google import genai
 
 
-BASE_DIR = pathlib.Path(__file__).parent
-ENV_PATH = BASE_DIR / "secrets.env"
-load_dotenv(ENV_PATH)
-
-
-with open(ENV_PATH, "r", encoding="utf-8") as f:
-    for line in f:
-        if line.startswith("GEMINI_API_KEY="):
-            os.environ["GEMINI_API_KEY"] = line.split("=", 1)[1].strip()
+import os
 
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
