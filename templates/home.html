@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Spotiscan – Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        :root {
+            --accent-green: #1ed760;
+            --accent-purple: #a259ff;
+            --accent-pink: #ff4b81;
+            --bg-dark: #050509;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: system-ui, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        /* WebGL canvas behind everything */
+        #shader-canvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: -2;
+        }
+
+        /* A very light noise overlay to make it premium */
+        #noise {
+            pointer-events: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: -1;
+            opacity: 0.09;
+            background-image: url("https://grainy-gradients.vercel.app/noise.png");
+            background-size: cover;
+        }
+
+        .card {
+            position: relative;
+            background: rgba(5, 5, 15, 0.8);
+            padding: 40px 46px;
+            border-radius: 28px;
+            border: 1px solid rgba(255,255,255,0.12);
+            backdrop-filter: blur(20px);
+            max-width: 560px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+        }
+
+        h1 {
+            font-size: 34px;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #b3b3b3;
+            margin-bottom: 20px;
+            line-height: 1.6;
+            font-size: 13px;
+        }
+
+        .login-btn {
+            display: inline-flex;
+            padding: 12px 24px;
+            border-radius: 999px;
+            background: var(--accent-green);
+            color: #000;
+            font-weight: 600;
+            font-size: 14px;
+            border: none;
+            cursor: pointer;
+            text-decoration: none;
+            transition: 0.15s ease-out;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+            background: #36f57f;
+            box-shadow: 0 8px 25px rgba(30,215,96,0.6);
+        }
+
+        .logo-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .logo-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #1ed760, #0f4026);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-circle span { font-size: 18px; font-weight: 700; }
+
+        .logo-text-small {
+            font-size: 12px;
+            opacity: 0.8;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .logo-text-sub {
+            font-size: 11px;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+
+<body>
+
+<!-- Neon Mist Shader -->
+<canvas id="shader-canvas"></canvas>
+<div id="noise"></div>
+
+<div class="card">
+    <div class="logo-row">
+        <div class="logo-circle"><span>Σ</span></div>
+        <div>
+            <div class="logo-text-small">SPOTISCAN</div>
+            <div class="logo-text-sub">Music Psychology Scanner</div>
+        </div>
+    </div>
+
+    <h1>Read between your tracks.</h1>
+
+    <p class="subtitle">
+        Spotiscan turns your Spotify history into a personality snapshot.
+        Get a Wrapped-style roast, psychological breakdown, and AI-made playlists
+        tailored to your moods and emotional patterns.
+    </p>
+
+    <a href="/login" class="login-btn">Login with Spotify</a>
+</div>
+
+<script>
+/* --- Neon Mist Shader (WebGL fragment shader) --- */
+
+const canvas = document.getElementById("shader-canvas");
+const gl = canvas.getContext("webgl");
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+resize();
+window.onresize = resize;
+
+/* Shader sources */
+const vertex = `
+attribute vec2 position;
+void main() { gl_Position = vec4(position, 0.0, 1.0); }
+`;
+
+const fragment = `
+precision highp float;
+
+uniform float u_time;
+uniform vec2 u_res;
+
+float noise(vec2 p){
+    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+float fbm(vec2 p){
+    float v = 0.0;
+    float a = 0.5;
+    for(int i=0; i<5; i++){
+        v += a * noise(p);
+        p *= 2.5;
+        a *= 0.5;
+    }
+    return v;
+}
+
+void main(){
+    vec2 uv = gl_FragCoord.xy / u_res.xy;
+
+    float t = u_time * 0.1;
+
+    float n = fbm(uv * 3.0 + t);
+
+    vec3 col = mix(
+        vec3(0.09,0.02,0.15),     // deep purple
+        vec3(0.64,0.31,1.0),      // neon purple
+        n
+    );
+
+    col = mix(col, vec3(1.0,0.29,0.5), smoothstep(0.4, 0.7, n)); // pink fog
+    col = mix(col, vec3(0.12,1.0,0.52), smoothstep(0.6, 1.0, n)); // green accents
+
+    gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    return s;
+}
+
+const vs = compile(gl.VERTEX_SHADER, vertex);
+const fs = compile(gl.FRAGMENT_SHADER, fragment);
+
+const program = gl.createProgram();
+gl.attachShader(program, vs);
+gl.attachShader(program, fs);
+gl.linkProgram(program);
+gl.useProgram(program);
+
+const buffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+    -1, -1, 1, -1, -1, 1, 1, 1
+]), gl.STATIC_DRAW);
+
+const position = gl.getAttribLocation(program, "position");
+gl.enableVertexAttribArray(position);
+gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+
+const u_time = gl.getUniformLocation(program, "u_time");
+const u_res = gl.getUniformLocation(program, "u_res");
+
+let start = performance.now();
+function draw(){
+    let now = (performance.now() - start) / 1000;
+    gl.uniform1f(u_time, now);
+    gl.uniform2f(u_res, canvas.width, canvas.height);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    requestAnimationFrame(draw);
+}
+draw();
+</script>
+
+</body>
+</html>

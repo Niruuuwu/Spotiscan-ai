@@ -1,0 +1,39 @@
+# -------------------------
+# Environment / Secrets
+# -------------------------
+secrets.env
+.env
+*.env
+
+# -------------------------
+# Python Virtual Environment
+# -------------------------
+venv/
+.venv/
+
+# -------------------------
+# Bytecode / Cache
+# -------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# -------------------------
+# IDE / Editor Folders
+# -------------------------
+.vscode/
+.idea/
+
+# -------------------------
+# System Files
+# -------------------------
+.DS_Store
+Thumbs.db
+
+# -------------------------
+# Flask / Build Artifacts
+# -------------------------
+instance/
+dist/
+build/
