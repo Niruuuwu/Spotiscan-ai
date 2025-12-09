@@ -16,7 +16,8 @@ print([m.name for m in client.models.list()])
 
 
 app = Flask(__name__)
-app.secret_key = "spotiscan_secret_123"
+app.secret_key = os.getenv("SECRET_KEY")
+
 
 sp_oauth = SpotifyOAuth(
     client_id=os.getenv("SPOTIPY_CLIENT_ID"),
@@ -206,4 +207,7 @@ Song Title - Artist
 
 if __name__ == "__main__":
     app.run()
+    app.config["SESSION_COOKIE_SECURE"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "None"
+
  
